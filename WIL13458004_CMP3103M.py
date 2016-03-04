@@ -2,13 +2,14 @@
 """
 Created on Tue Mar  1 12:12:09 2016
 
-@author: computing
+@author: Daniel Williams - 13458204
 """
 
 #!/usr/bin/env python
 
 import rospy
 import cv2
+import numpy
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge, CvBridgeError
 from geometry_msgs.msg import Twist
@@ -34,27 +35,33 @@ class image_converter:
         
 		#INITIALISES A GLOBALLY ACCESSIBLE PUBLISHER THAT CAN PUBLISH TWIST MESSAGES TO THE cmd_vel TOPIC
         self.geoPub = rospy.Publisher("/turtlebot_1/cmd_vel", Twist)
-		
+        
 		#INITIALISES A SUBSCRIBER TO THE 'camera/rgb/image_raw' TOPIC THAT WILL RECIEVE AN Image AND CALL THE callback FUNCTION WHEN NEW DATA IS PUBLISHED
         self.image_sub = rospy.Subscriber("/turtlebot_1/camera/rgb/image_raw", Image, self.callback)
-		
+        
 		#INITIALISES A SUBSCRIBER TO THE 'scan' TOPIC THAT WILL RECIEVE A LaserScan AND CALL THE scanCallback FUNCTION WHEN NEW DATA IS PUBLISHED
         self.laser_sub = rospy.Subscriber("/turtlebot_1/scan", LaserScan, self.scanCallback)
+        
+		
+		#Real Robot use
+		#self.geoPub = rospy.Publisher("/cmd_vel", Twist)
+		#self.image_sub = rospy.Subscriber("/camera/rgb/image_color", Image, self.callback)
+		#self.laser_sub = rospy.Subscriber("/scan", LaserScan, self.scanCallback)
         
         
     #METHOD THAT HANDLES ROBOT MOVEMENT WHEN TARGET LIGHTSOURCE IS VISIBLE    
     def targetFound(self, lWhite, rWhite):
         
-        #THRESHOLDING THAT SETS THE SPEED OF THE LINEAR MOVEMENT SO THAT THE CLOSER TO THE LIGHTSOURCE THE SLOWER THE LINEAR MOMENTUM
-        if ((lWhite + rWhite) <= 10000):
-            speed = 0.6
-        elif ((lWhite + rWhite) > 10000 and (lWhite + rWhite) <= 20000):
-            speed = 0.4
-        elif ((lWhite + rWhite) > 20000 and (lWhite + rWhite) <= 30000):
+        #THRESHOLDING THAT SETS THE SPEED OF THE LINEAR MOVEMENT SO THAT THE CLOSER TO THE LIGHTSOURCE THE SLOWER THE LINEAR MOMENTUM,
+        if ((lWhite + rWhite) <= 10000): 
+            speed = 0.2 
+        elif ((lWhite + rWhite) > 10000 and (lWhite + rWhite) <= 20000): 
+            speed = 0.4 
+        elif ((lWhite + rWhite) > 20000 and (lWhite + rWhite) <= 30000): 
             speed = 0.2
-        elif ((lWhite + rWhite) > 30000 and (lWhite + rWhite) <= 36300):
+        elif ((lWhite + rWhite) > 30000 and (lWhite + rWhite) <= 36300): 
             speed = 0.1
-        elif ((lWhite + rWhite) > 36300):
+        elif ((lWhite + rWhite) > 363000):  
             speed = 0.0
             print "Light Source Found"
 
@@ -89,7 +96,7 @@ class image_converter:
         
         #PUBLISHES A GEOMETERY TWIST MESSAGE TO MAINTAIN A LINEAR MOMENTUM
         message = Twist()
-        message.linear.x = 0.6
+        message.linear.x = 0.3
         self.geoPub.publish(message)             
         
     #METHOD THAT HANDLES ROBOT MOVEMENT WHEN AN OBSTACLE IS DETECTED IN THE VISION OF THE ROBOTS LASER SCANNER    
@@ -114,7 +121,8 @@ class image_converter:
         
         #FINDS THE MINIMUM VALUE WITHIN THE RETURNED LASER SCAN AND THE INDEX WITHIN THE SCAN THAT THE VALUE IS LOCATED
         self.minIndex = scan.index(min(scan))        
-        self.minimum = min(scan)    
+        #self.minimum = min(scan)  
+        self.minimum = numpy.nanmin(scan)
 
     #MAIN CALLBACK FUNCTION THAT IS EXECUTED WHEN A IMAGE IS RETURNED FROM THE camera/rgb/image_raw TOPIC SUBSCRIBER
     def callback(self, data):
@@ -128,7 +136,6 @@ class image_converter:
         
         try:
 		
-			#
             cv_image = self.bridge.imgmsg_to_cv2(data, "bgr8")
             
             #SPLITS THE INPUT IMAGE INTO 2 SEPRTATE IMAGES                        
@@ -139,36 +146,40 @@ class image_converter:
             left_hsv_image = cv2.cvtColor(leftImage, cv2.COLOR_BGR2GRAY)
             right_hsv_image = cv2.cvtColor(rightImage, cv2.COLOR_BGR2GRAY)
             
-			#SUMS THE NUMBER OF HIGHT INTENSITY PIXELS THAT ARE GREATER THAN THE GIVEN THRESHOLD '200'
+		#SUMS THE NUMBER OF HIGHT INTENSITY PIXELS THAT ARE GREATER THAN THE GIVEN THRESHOLD '200'
             leftWhite = (left_hsv_image > 200).sum()
             rightWhite = (right_hsv_image > 200).sum()
             
 			#CALCULATES THE TOTAL NUMBER OF HIGH INTENSITY PIXELS IN THE WHOLE IMAGE
             Value = int(int(leftWhite) + int(rightWhite))
+            
+            #print minVal
  
 			#CHECKS FOR OBSTACLES WITHIN CLOSE PROIMITY OF THE ROBOT USING THE MINIMUM VALUE RETURNED FROM THE LASER SCAN
-            if (minVal > 0.6):
+            if (minVal > 1.0):
+                
+                #print Value
                 
                 #TARGET LIGHTSOURCE FOUND
 				#CHECKS THAT THERE ARE 1000 OR MORE HIGH INTENSITY PIXELS WITHIN THE IMAGE AS A WHOLE
-                if (Value >= 1000): #600
+                if (Value >= 1000 ): 
 					#CALLS targetFound FUNCTION PASSING THE HIGH INTENSITY VALUES OF THE LEFT AND RIGHT IMAGES
                     self.targetFound(leftWhite, rightWhite)
                     print "Light Source Targeted"
                 
                 #WANDER
 				#CHECKS IF THERE ARE LESS THAN 1000 HIGH INTENSITY PIXELS WITHIN THE IMAGE AS A WHOLE
-                if (Value < 1000):  #600
+                if (Value < 1000):  #VALUE FOR SIMULATION USE
                     #CALLS Wander FUNCTION
                     self.Wander()
-					print "Wandering"
+                    print "Wandering"
                 
             #OBSTACLE DETECTED    
 			#CHECKS IF THE MIMIMUM VALUE RETURNED BY THE LASER SCAN SHOWS AN OBSTACLE IN CLOSE PROXIMITY 
-            elif (minVal <= 0.6 or str(minVal) == "nan"):
+            elif (minVal <= 1.0 or str(minVal) == "nan"):
                 #CALLS obstacleAvoidence FUNCTION
                 self.obstacleAvoidance()
-				print "object detected"
+                print "object detected"
 				
         #ERROR HANDLING    
         except CvBridgeError, e:
